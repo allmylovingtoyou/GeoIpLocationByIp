@@ -1,0 +1,54 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>netcoreapp3.0</TargetFramework>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="HashDepot" Version="2.0.3" />
+      <PackageReference Include="MaxMind.GeoIP2" Version="3.0.0" />
+      <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="3.0.0" />
+      <PackageReference Include="RestSharp" Version="106.6.10" />
+      <PackageReference Include="Serilog.AspNetCore" Version="3.1.0" />
+      <PackageReference Include="Serilog.Sinks.File" Version="4.1.0" />
+      <PackageReference Include="SharpCompress" Version="0.24.0" />
+      <PackageReference Include="System.ValueTuple" Version="4.5.0" />
+      <PackageReference Include="TinyCsvParser" Version="2.5.2" />
+      <PackageReference Include="Z.EntityFramework.Extensions.EFCore" Version="3.0.15" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Update="appsettings.json">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </None>
+      <None Update="GeoLite2-City_20191105.tar.gz">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Remove="geolite2\GeoLite2-City_20191105.tar.gz" />
+      <Content Include="geolite2\GeoLite2-City_20191105.tar.gz">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </Content>
+      <None Remove="geolite2\GeoLite2-City-Blocks-IPv4.csv" />
+      <Content Include="geolite2\GeoLite2-City-Blocks-IPv4.csv">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+      <None Remove="geolite2\GeoLite2-City-Blocks-IPv4-lite.csv" />
+      <Content Include="geolite2\GeoLite2-City-Blocks-IPv4-lite.csv">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </Content>
+      <None Remove="geolite2\GeoLite2-City-CSV_20191105.zip" />
+      <Content Include="geolite2\GeoLite2-City-CSV_20191105.zip">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Db\Db.csproj" />
+      <ProjectReference Include="..\Domain\Domain.csproj" />
+    </ItemGroup>
+
+</Project>
