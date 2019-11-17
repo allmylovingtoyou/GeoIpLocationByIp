@@ -1,7 +1,5 @@
-﻿using System.Numerics;
-using Domain;
+﻿using Domain;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace Db
 {
@@ -32,19 +30,10 @@ namespace Db
                     .ToLowerInvariant());
 
             modelBuilder.Entity<IpRecord>()
-                .HasKey(x => x.Network);
+                .HasKey(x => x.Id);
 
             modelBuilder.Entity<IpRecord>()
                 .HasIndex(x => x.Network);
-            
-//            var converter = new ValueConverter<BigInteger, long>(    
-//                model => (long)model,
-//                provider => new BigInteger(provider));
-//
-//            modelBuilder
-//                .Entity<IpRecord>()
-//                .Property(e => e.Hash)
-//                .HasConversion(converter);
         }
     }
 }

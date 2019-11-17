@@ -1,9 +1,9 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 using Db;
@@ -12,10 +12,8 @@ using Domain;
 using HashDepot;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using RestSharp;
 using Serilog;
-using SharpCompress.Archives.Tar;
-using SharpCompress.Common;
-using SharpCompress.Readers;
 using TinyCsvParser;
 
 namespace DbUpdater
@@ -23,89 +21,51 @@ namespace DbUpdater
     class Program
     {
         private static IConfiguration _configuration;
-        private static readonly string AppDir = AppDomain.CurrentDomain.BaseDirectory;
-        public const string ConfigConnectionString = "db";
-        private static readonly string GeoLiteDir = AppDir + "/geolite2/";
-        private static ConcurrentBag<IpRecord> _toAdd = new ConcurrentBag<IpRecord>();
-        private static ConcurrentBag<IpRecord> _toUpdate = new ConcurrentBag<IpRecord>();
+        private const string ConfigConnectionString = "db";
         private static ApplicationDbContext _dbContext;
 
+        // ReSharper disable once UnusedParameter.Local
         static async Task Main(string[] args)
         {
             var startTime = DateTime.Now;
             _configuration = BuildConfig();
             CreateLogger(_configuration);
-
-            
-            var fileToDecompress = new FileInfo(GeoLiteDir + "GeoLite2-City-CSV_20191105.zip");
-            using FileStream originalFileStream = fileToDecompress.OpenRead();
-            using var za = new ZipArchive(originalFileStream, ZipArchiveMode.Read);
-            var res = za.Entries.First(x => x.Name.Equals("GeoLite2-City-Blocks-IPv4.csv"));
-            
-//            using var decompressed = new MemoryStream();
-//            var qq = res.Open();
-            
-//            using GZipStream zipStream = new GZipStream(originalFileStream, CompressionMode.Decompress, true);
-//            using var decompressed = new MemoryStream();
-//            zipStream.CopyTo(decompressed);
-//            decompressed.Seek(0, SeekOrigin.Begin);
-//            using TarArchive tarArchive = TarArchive.Open(decompressed);
-//            using var reader = tarArchive.ExtractAllEntries();
-//            reader.WriteAllToDirectory(AppDir + "GeoLite2", options: new ExtractionOptions {Overwrite = true});
-
-
-            
-
             _dbContext = GetDbContext();
             _dbContext.Database.Migrate();
 
-            
-            
-            CsvParserOptions csvParserOptions = new CsvParserOptions(true, ',');
-            var csvMapper = new CsvMapper();
-            var csvParser = new CsvParser<IpRecord>(csvParserOptions, csvMapper);
+            var response = DownloadUpdate();
 
-            Log.Debug($"Try load data from csv");
-            
-            var csvRecords = csvParser
-                .ReadFromStream(res.Open(), Encoding.UTF8)
-//                .ReadFromFile(GeoLiteDir + "GeoLite2-City-Blocks-IPv4-lite.csv", Encoding.ASCII)
-                .Where(x => x.IsValid)
-                .Select(x => x.Result)
-                .Select(x =>
-                {
-                    x.Hash = XXHash.Hash32(Encoding.UTF8.GetBytes(x.Network.ToString() + x.Latitude + x.Longitude));
-                    return x;
-                })
-                .ToImmutableDictionary(x => x.Network, x => x);
-            Log.Debug($"CsvRecords dictionary count: {csvRecords.Count}");
+            await using var zipData = new MemoryStream(response);
+            using var zipArchive = new ZipArchive(zipData, ZipArchiveMode.Read);
+            var data = zipArchive.Entries.First(x => x.Name.Equals(GetIpv4FileName()));
 
+            var csvRecords = ParseCsvRecords(data);
+            var dbRecords = GetAllDbRecords();
+            var csvDiff = GetCsvDiff(csvRecords, dbRecords);
 
-            var dbRecords = _dbContext.IpRecords
-                .ToImmutableDictionary(x => x.Network, x => x);
-            Log.Debug($"DbRecords dictionary count: {dbRecords.Count()}");
+            await AddNewRecords(csvDiff, dbRecords);
+            await UpdateRecords(csvDiff, dbRecords);
+            await DeleteOldRecords(dbRecords, csvRecords);
 
-            var csvDiff = csvRecords.Values
-                .Where(csv =>
-                {
-                    if (dbRecords.TryGetValue(csv.Network, out var dbValue))
-                    {
-                        return !dbValue.Hash.Equals(csv.Hash);
-                    }
+            var totalWorkTime = (DateTime.Now - startTime).TotalSeconds;
+            Log.Information("Completed in {0} seconds", totalWorkTime);
+        }
 
-                    return true;
-                })
-                .ToImmutableDictionary(x => x.Network, x => x);
-            Log.Debug($"CsvDiff count: {csvDiff.Count()}");
-
-            var toAdd = csvDiff.Values
-                .AsParallel()
-                .Where(csv => !dbRecords.ContainsKey(csv.Network))
+        private static async Task DeleteOldRecords(ImmutableDictionary<(IPAddress, int), IpRecord> dbRecords,
+            ImmutableDictionary<(IPAddress, int), IpRecord> csvRecords)
+        {
+            var toDelete = dbRecords
+                .Where(db => !csvRecords.ContainsKey(db.Key))
+                .Select(db => db.Value)
                 .ToImmutableList();
-            Log.Debug($"To add count: {toAdd.Count()}");
-            await _dbContext.BulkInsertAsync(toAdd);
-            csvDiff.RemoveRange(toAdd.Select(x => x.Network));
 
+            Log.Debug($"To Delete count: {toDelete.Count()}");
+            await _dbContext.BulkDeleteAsync(toDelete);
+        }
+
+        private static async Task UpdateRecords(ImmutableDictionary<(IPAddress, int), IpRecord> csvDiff,
+            ImmutableDictionary<(IPAddress, int), IpRecord> dbRecords)
+        {
             var toUpdate = csvDiff
                 .Where(csv => dbRecords.ContainsKey(csv.Key))
                 .Select(csv =>
@@ -124,19 +84,82 @@ namespace DbUpdater
                 .ToImmutableList();
             Log.Debug($"To update count: {toUpdate.Count()}");
             await _dbContext.BulkUpdateAsync(entities: toUpdate);
+        }
 
-            var toDelete = dbRecords
-                .Where(db => !csvRecords.ContainsKey(db.Key))
-                .Select(db => db.Value)
+        private static async Task AddNewRecords(ImmutableDictionary<(IPAddress, int), IpRecord> csvDiff,
+            ImmutableDictionary<(IPAddress, int), IpRecord> dbRecords)
+        {
+            var toAdd = csvDiff.Values
+                .AsParallel()
+                .Where(csv => !dbRecords.ContainsKey(csv.Network))
                 .ToImmutableList();
+            Log.Debug($"To add count: {toAdd.Count()}");
+            await _dbContext.BulkInsertAsync(toAdd);
+            csvDiff.RemoveRange(toAdd.Select(x => x.Network));
+        }
 
-            Log.Debug($"To Delete count: {toDelete.Count()}");
-            await _dbContext.BulkDeleteAsync(toDelete);
+        private static ImmutableDictionary<(IPAddress, int), IpRecord> GetAllDbRecords()
+        {
+            var dbRecords = _dbContext.IpRecords
+                .ToImmutableDictionary(x => x.Network, x => x);
+            Log.Debug($"DbRecords dictionary count: {dbRecords.Count()}");
+            return dbRecords;
+        }
 
+        private static ImmutableDictionary<(IPAddress, int), IpRecord> GetCsvDiff(ImmutableDictionary<(IPAddress, int), IpRecord> csvRecords,
+            ImmutableDictionary<(IPAddress, int), IpRecord> dbRecords)
+        {
+            var csvDiff = csvRecords.Values
+                .Where(csv =>
+                {
+                    if (dbRecords.TryGetValue(csv.Network, out var dbValue))
+                    {
+                        return !dbValue.Hash.Equals(csv.Hash);
+                    }
 
-            Console.WriteLine($"Start time = {startTime}, current = {DateTime.Now}");
-            Console.WriteLine($"Delta time = {(DateTime.Now - startTime).TotalSeconds}");
-            Console.WriteLine("Completed");
+                    return true;
+                })
+                .ToImmutableDictionary(x => x.Network, x => x);
+            Log.Debug($"CsvDiff count: {csvDiff.Count()}");
+            return csvDiff;
+        }
+
+        private static ImmutableDictionary<(IPAddress, int), IpRecord> ParseCsvRecords(ZipArchiveEntry res)
+        {
+            Log.Debug($"Try load data from csv");
+
+            var csvParserOptions = new CsvParserOptions(true, ',');
+            var csvMapper = new CsvMapper();
+            var csvParser = new CsvParser<IpRecord>(csvParserOptions, csvMapper);
+
+            var csvRecords = csvParser
+                .ReadFromStream(res.Open(), Encoding.UTF8)
+                .Where(x => x.IsValid)
+                .Select(x => x.Result)
+                .Select(x =>
+                {
+                    x.Hash = XXHash.Hash32(Encoding.UTF8.GetBytes(x.Network.ToString() + x.Latitude + x.Longitude));
+                    return x;
+                })
+                .ToImmutableDictionary(x => x.Network, x => x);
+            Log.Debug($"CsvRecords dictionary count: {csvRecords.Count}");
+            return csvRecords;
+        }
+
+        private static byte[] DownloadUpdate()
+        {
+            var url = GetUrl();
+            var rest = new RestClient(url);
+            var request = new RestRequest();
+            var response = rest.DownloadData(request);
+
+            if (response == null)
+            {
+                Log.Error($"Can't download update from {url}");
+                throw new InvalidOperationException("data buffer null");
+            }
+
+            return response;
         }
 
         private static ApplicationDbContext GetDbContext()
@@ -146,19 +169,7 @@ namespace DbUpdater
             return new ApplicationDbContext(builder.Options);
         }
 
-        private static void Decompress(FileInfo fileToDecompress)
-        {
-            using FileStream originalFileStream = fileToDecompress.OpenRead();
-            using GZipStream zipStream = new GZipStream(originalFileStream, CompressionMode.Decompress, true);
-            using var decompressed = new MemoryStream();
-            zipStream.CopyTo(decompressed);
-            decompressed.Seek(0, SeekOrigin.Begin);
-            using TarArchive tarArchive = TarArchive.Open(decompressed);
-            using var reader = tarArchive.ExtractAllEntries();
-            reader.WriteAllToDirectory(AppDir + "GeoLite2", options: new ExtractionOptions {Overwrite = true});
-        }
-
-        private static string GetUrl(IConfiguration configuration)
+        private static string GetUrl()
         {
             var url = _configuration["Geoip:url"];
             if (string.IsNullOrWhiteSpace(url))
@@ -169,7 +180,18 @@ namespace DbUpdater
             return url;
         }
 
-        public static IConfiguration BuildConfig()
+        private static string GetIpv4FileName()
+        {
+            var item = _configuration["Geoip:ipv4FileName"];
+            if (string.IsNullOrWhiteSpace(item))
+            {
+                throw new ArgumentException("incorrect fileName in config file");
+            }
+
+            return item;
+        }
+
+        private static IConfiguration BuildConfig()
         {
             return new ConfigurationBuilder()
                 .AddJsonFile("appsettings.json")

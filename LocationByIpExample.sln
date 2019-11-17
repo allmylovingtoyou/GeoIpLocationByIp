@@ -6,6 +6,12 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Domain", "Domain\Domain.csp
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Db", "Db\Db.csproj", "{6F98F1E7-D04A-46B3-A011-8E417273D5FE}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HttpApi", "HttpApi\HttpApi.csproj", "{AACEBD3E-E1AB-443A-8A61-2D93889AD221}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Api", "Api\Api.csproj", "{03F44730-A58B-4AC7-8050-07F47F0FD53B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HttpApiTests", "HttpApiTests\HttpApiTests.csproj", "{3FC5B72E-13B8-4204-AC55-B76ADEDFFC20}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -24,5 +30,17 @@ Global
 		{6F98F1E7-D04A-46B3-A011-8E417273D5FE}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6F98F1E7-D04A-46B3-A011-8E417273D5FE}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6F98F1E7-D04A-46B3-A011-8E417273D5FE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AACEBD3E-E1AB-443A-8A61-2D93889AD221}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AACEBD3E-E1AB-443A-8A61-2D93889AD221}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AACEBD3E-E1AB-443A-8A61-2D93889AD221}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AACEBD3E-E1AB-443A-8A61-2D93889AD221}.Release|Any CPU.Build.0 = Release|Any CPU
+		{03F44730-A58B-4AC7-8050-07F47F0FD53B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{03F44730-A58B-4AC7-8050-07F47F0FD53B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{03F44730-A58B-4AC7-8050-07F47F0FD53B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{03F44730-A58B-4AC7-8050-07F47F0FD53B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3FC5B72E-13B8-4204-AC55-B76ADEDFFC20}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3FC5B72E-13B8-4204-AC55-B76ADEDFFC20}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3FC5B72E-13B8-4204-AC55-B76ADEDFFC20}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3FC5B72E-13B8-4204-AC55-B76ADEDFFC20}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
