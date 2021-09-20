@@ -12,7 +12,7 @@
       <PackageReference Include="RestSharp" Version="106.6.10" />
       <PackageReference Include="Serilog.AspNetCore" Version="3.1.0" />
       <PackageReference Include="Serilog.Sinks.File" Version="4.1.0" />
-      <PackageReference Include="SharpCompress" Version="0.24.0" />
+      <PackageReference Include="SharpCompress" Version="0.29.0" />
       <PackageReference Include="System.ValueTuple" Version="4.5.0" />
       <PackageReference Include="TinyCsvParser" Version="2.5.2" />
       <PackageReference Include="Z.EntityFramework.Extensions.EFCore" Version="3.0.15" />
